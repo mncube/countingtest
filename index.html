@@ -1,0 +1,110 @@
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Number Guessing Game</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: Arial, sans-serif; text-align: center; padding: 2em; }
+    #game-container { max-width: 400px; margin: auto; }
+    input { width: 60px; font-size: 1rem; padding: 0.3em; }
+    button { font-size: 1rem; padding: 0.3em 0.6em; margin-left: 0.5em; }
+    #feedback { margin-top: 1em; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div id="game-container"></div>
+
+  <script>
+    /**
+     * @typedef {{ attempts: number, timeTaken: number }} SessionData
+     */
+
+    // --- Platform API Service ---
+    function createApiService() {
+      const BASE_URL = 'https://api.randomplayables.com';
+      return {
+        async startSession(gameId) {
+          const res = await fetch(\`\${BASE_URL}/sessions\`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ gameId })
+          });
+          const payload = await res.json();
+          return payload.sessionId;
+        },
+        async endSession(sessionId, data /*: SessionData */) {
+          await fetch(\`\${BASE_URL}/sessions/\${sessionId}\`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+          });
+        }
+      };
+    }
+
+    // --- Main Game Logic ---
+    (function(){
+      const GAME_ID = 'number-guessing';
+      const api = createApiService();
+      let sessionId, target, attempts, startTime;
+
+      // Build UI
+      function renderUI() {
+        const container = document.getElementById('game-container');
+        container.innerHTML = `
+          <h1>Guess the Number</h1>
+          <p>I'm thinking of a number between 1 and 100.</p>
+          <input id="guess-input" type="number" min="1" max="100" />
+          <button id="guess-button">Guess!</button>
+          <p id="feedback"></p>
+        `;
+        document
+          .getElementById('guess-button')
+          .addEventListener('click', handleGuess);
+      }
+
+      // Handle each guess
+      function handleGuess() {
+        const inputEl = document.getElementById('guess-input');
+        const feedback = document.getElementById('feedback');
+        const guess = Number(inputEl.value);
+        if (!guess || guess < 1 || guess > 100) {
+          feedback.textContent = 'Please enter a number 1–100.';
+          return;
+        }
+        attempts++;
+        if (guess < target) {
+          feedback.textContent = 'Too low!';
+        } else if (guess > target) {
+          feedback.textContent = 'Too high!';
+        } else {
+          const timeTaken = Math.round((Date.now() - startTime) / 1000);
+          feedback.textContent =
+            \`✅ Correct! Attempts: \${attempts}, Time: \${timeTaken}s.\`;
+          endGame({ attempts, timeTaken });
+          // disable further input
+          document.getElementById('guess-button').disabled = true;
+          inputEl.disabled = true;
+        }
+      }
+
+      // Start session & initialize
+      async function startGame() {
+        sessionId = await api.startSession(GAME_ID);
+        target = Math.floor(Math.random() * 100) + 1;
+        attempts = 0;
+        startTime = Date.now();
+        renderUI();
+      }
+
+      // Send final data
+      function endGame(data) {
+        api.endSession(sessionId, data).catch(console.error);
+      }
+
+      // Kick off when DOM is ready
+      document.addEventListener('DOMContentLoaded', startGame);
+    })();
+  </script>
+</body>
+</html>
